@@ -20,6 +20,7 @@ import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
+import android.view.inputmethod.SurroundingText
 import androidx.test.filters.SmallTest
 import androidx.test.runner.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -68,9 +69,22 @@ private class FakeEditor : InputConnection {
     override fun setComposingRegion(start: Int, end: Int): Boolean = true
     override fun setComposingText(t: CharSequence, newCursorPosition: Int): Boolean = true
 
+    /**
+     * When true the editor refuses to report where its cursor is, through
+     * either route the wrapper can ask by. Real editors do this: the Google
+     * Assistant search field recreates its InputConnection on every
+     * deleteSurroundingText, and the fresh connection answers nothing until the
+     * first onUpdateSelection arrives.
+     */
+    var cursorIsUnreportable = false
+
     // Returning null mirrors an editor that does not support extraction, which
     // is the case the wrapper has to cope with anyway.
     override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? = null
+
+    override fun getSurroundingText(before: Int, after: Int, flags: Int): SurroundingText? =
+        if (cursorIsUnreportable) null
+        else SurroundingText(text.toString(), cursor, cursor, 0)
 
     override fun getSelectedText(flags: Int): CharSequence? = null
     override fun getCursorCapsMode(reqModes: Int): Int = 0
@@ -221,5 +235,57 @@ class InputConnectionInternalComposingWrapperTests {
 
         assertEquals("đạ", editor.text.toString())
         assertEquals(1, wrapper.composingStart)
+    }
+
+    /**
+     * Losing track of the cursor must not cost a keypress.
+     *
+     * Some apps recreate their InputConnection while a word is being typed —
+     * the Google Assistant search field does it on every deleteSurroundingText,
+     * so a Vietnamese diacritic (which is always delete-then-recommit) tore the
+     * editor down mid-word. The wrapper resets selStart to -1 on the new
+     * connection, and the next keypress arrived before any onUpdateSelection
+     * could restore it. The recovery path decided the cursor was at 0 and then
+     * returned without typing anything, so the character was silently dropped.
+     * Measured on a real device: 15 characters lost over 122 keypresses.
+     */
+    @Test
+    fun keypressIsNotDroppedWhenTheCursorCannotBeLocated() {
+        editor.cursorIsUnreportable = true
+
+        // The state a recreated InputConnection leaves behind. It has to be a
+        // genuinely new object, the way getCurrentInputConnection returns one
+        // after the app restarts input; updateIc ignores the same instance.
+        wrapper.updateIc(object : InputConnection by editor {})
+        assertEquals(-1, wrapper.selStart)
+
+        wrapper.setComposingText("e", 1)
+
+        assertEquals("e", editor.text.toString())
+        assertEquals(1, wrapper.selStart)
+    }
+
+    /**
+     * The getExtractedText fallback in InputConnectionUtil.extractSelection
+     * assigned selectionEnd to selStart, leaving selEnd at -1 forever, so the
+     * whole branch could only ever report "unknown". That made the cursor look
+     * unrecoverable on every editor whose getSurroundingText returns nothing.
+     */
+    @Test
+    fun cursorIsRecoveredFromExtractedTextWhenSurroundingTextIsUnavailable() {
+        val extractOnlyEditor = object : InputConnection by editor {
+            override fun getSurroundingText(before: Int, after: Int, flags: Int): SurroundingText? =
+                null
+
+            override fun getExtractedText(req: ExtractedTextRequest?, flags: Int) =
+                ExtractedText().apply {
+                    text = "hello"
+                    startOffset = 0
+                    selectionStart = 5
+                    selectionEnd = 5
+                }
+        }
+
+        assertEquals(5 to 5, InputConnectionUtil.extractSelection(extractOnlyEditor))
     }
 }

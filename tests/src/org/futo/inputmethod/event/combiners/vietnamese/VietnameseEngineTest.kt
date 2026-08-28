@@ -155,6 +155,22 @@ class VietnameseEngineTest {
         assertEquals("viet", combiner.getCombiningStateFeedback()?.toString())
     }
 
+    /**
+     * NOT ISOLATED FROM DEVICE STATE — this test fails if the
+     * "delete whole character on backspace" toggle is enabled on the device.
+     *
+     * VietTelexCombiner.processEvent picks between nativeRemoveLastChar and
+     * nativeRemoveLastOutputChar by reading
+     * VietnameseIMESettings.DeleteWholeCharOnBackspace through DataStoreHelper
+     * at keypress time. This test never sets it, so it reads whatever the
+     * installed app has stored and asserts the default (false) behaviour of
+     * stepping back one keystroke. With the toggle on it deletes the whole
+     * output character instead and the first assertion below fails with
+     * expected:<viêt> but was:<việ>.
+     *
+     * Fixing this properly means injecting the setting into the combiner rather
+     * than reading it from the global DataStore, so the test can pin it.
+     */
     @Test
     fun telexBackspaceStepsComposition() {
         // C3: vietej -> việt; DEL -> viêt; DEL -> viet.
