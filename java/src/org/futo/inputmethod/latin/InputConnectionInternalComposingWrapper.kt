@@ -216,8 +216,15 @@ class InputConnectionInternalComposingWrapper(
                 // In case we have absolutely no idea where the cursor is, our best hope is to just decide it's at 0
                 Log.e(TAG, "Could not extract cursor position! Falling back to 0")
                 super.setSelection(0, 0)
+                selStart = 0
+                selEnd = 0
                 cursor = 0
-                return
+                // Fall through and compose at 0. Returning here would drop the
+                // text on the floor, which silently swallows the keypress: apps
+                // that recreate their InputConnection mid-word (observed in the
+                // Google Assistant search field, which tears down its editor on
+                // every deleteSurroundingText) leave selStart at -1 for the next
+                // keypress and it would simply never reach the editor.
             }
         }
         if(composingStart != -1) {
