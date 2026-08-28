@@ -292,9 +292,14 @@ class InputConnectionInternalComposingWrapper(
                 if(setComposing) super.setComposingRegion(composingStart, selStart)
             } else {
                 if(BuildConfig.DEBUG) Log.d(TAG, " Case Unknown: user moved cursor? cursor=$cursor composingStart=$composingStart")
-                // User probably moved the cursor
-                // Not sure what to do here...
-                // Probably commit the new letters and tell inputlogic to reset composing?
+                // The cursor sits before the composing region we were tracking, so that region
+                // is unreachable from here and we cannot backtrack into it. Dropping the text
+                // would silently swallow the keypress, so start a fresh composition at the
+                // cursor instead (same as Case Begin).
+                composingStart = cursor
+                composingEnd = -1
+                typeChars(text)
+                if(setComposing) super.setComposingRegion(composingStart, selStart)
             }
         } else {
             if(BuildConfig.DEBUG) Log.d(TAG, " Case Begin: type [$text]")
@@ -307,6 +312,13 @@ class InputConnectionInternalComposingWrapper(
             if(setComposing) super.setComposingRegion(composingStart, selStart)
         }
         composingText = text.toString()
+        if(composingText.isEmpty()) {
+            // Nothing is being composed anymore, so there is no composing region to track.
+            // Keeping the old composingStart would make a later setComposingText compare the
+            // cursor against a position that no longer means anything.
+            composingStart = -1
+            composingEnd = -1
+        }
         //requestCursorUpdates(CURSOR_UPDATE_IMMEDIATE)
     }
 
@@ -379,6 +391,9 @@ class InputConnectionInternalComposingWrapper(
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
         if(BuildConfig.DEBUG) Log.d(TAG, "    deleteSurroundingText($beforeLength, $afterLength) $selStart:$selEnd")
         super.finishComposingText()
+        // This deletes text behind the composing machinery's back, so whatever composing region
+        // we were tracking no longer describes the editor. Forget it rather than let it go stale.
+        finishComposingText()
         if(selStart != -1) selStart = (selStart - beforeLength).coerceAtLeast(0)
         if(selEnd != -1) selEnd = (selEnd - beforeLength).coerceAtLeast(0)
         return super.deleteSurroundingText(beforeLength, afterLength)

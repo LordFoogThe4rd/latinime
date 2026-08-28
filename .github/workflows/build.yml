@@ -1,0 +1,67 @@
+name: Build on push
+
+on:
+  push:
+    branches:
+      - '**'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;28.2.13676358" \
+            "cmake;3.22.1"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build bamboo-core Go library
+        shell: bash
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          ./native/bamboo-go/build.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          export VERSION_NAME="$(git describe --tags 2>/dev/null || git rev-parse --short HEAD)"
+          export VERSION_CODE="$(git rev-list --first-parent --count HEAD)"
+          ./gradlew assembleUnstableDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: latinime-unstable-debug
+          path: build/outputs/apk/unstable/debug/*.apk
+          if-no-files-found: error

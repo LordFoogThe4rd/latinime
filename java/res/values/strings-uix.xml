@@ -676,6 +676,11 @@
     <string name="japanese_settings_toggle_halfwidth_space">Use half-width space</string>
     <string name="japanese_settings_toggle_halfwidth_space_subtitle">Always use half-width space</string>
 
+    <!-- Specific to Vietnamese input method -->
+    <string name="vietnamese_settings_title">Vietnamese Input Settings</string>
+    <string name="vietnamese_settings_toggle_delete_whole_char">Delete whole character on backspace</string>
+    <string name="vietnamese_settings_toggle_delete_whole_char_subtitle">Backspace removes the entire character before the caret instead of removing tone marks one by one</string>
+
     <!-- Advanced parameters, these are only really relevant for English -->
     <string name="prediction_settings_transformer_advanced_params">Advanced Parameters</string>
     <string name="prediction_settings_transformer_advanced_params_experimental_notice">Options below are experimental and may be removed or changed in the future as internal workings of the app change. Changing these values may have an adverse impact on your experience.
